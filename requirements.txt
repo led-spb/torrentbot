@@ -2,3 +2,4 @@ requests
 lxml
 cssselect
 jinja2
+transmission-rpc

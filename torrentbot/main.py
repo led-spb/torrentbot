@@ -1,22 +1,30 @@
 import argparse
 from dataclasses import asdict
 from typing import List, Any
-
 import requests
 import logging
+from urllib.parse import urlsplit
 from jinja2 import Environment
+from transmission_rpc import Client
 from .server import TelegramWebhookServer, BotRequestHandler, PatternMessageHandler
 from .trackers import RutrackerHelper, TorrentItem
 
 
 class TorrentCommandHandler(BotRequestHandler):
-    def __init__(self, api_key: str, clients: list):
+    def __init__(self, api_key: str, clients: list, transmission_url: str = None):
         super().__init__(api_key)
         self.clients = clients
         self.tracker = RutrackerHelper()
         self.templates = {}
         self.jinja = Environment()
         self.cache = {}
+
+        self.transmission = None
+        if transmission_url is not None:
+            parts = urlsplit(transmission_url)
+            self.transmission = Client(
+                protocol="http", host=parts.hostname, port=parts.port
+            )
 
     def authorized_chat_id(self, message):
         chat_id = self.get_chat_id(message)
@@ -40,6 +48,9 @@ class TorrentCommandHandler(BotRequestHandler):
         data = message.get('text').split('_')
         item_id = int(data[1])
         body = self.tracker.download(item_id)
+        if self.transmission is not None:
+            self.transmission.add_torrent(body)
+
         self.send_document(
             chat_id,
             (f'download_{item_id}.torrent', body),
@@ -121,6 +132,7 @@ def main():
     parser.add_argument('--secret-token', required=True)
     parser.add_argument('--webhook', required=True)
     parser.add_argument('--users', nargs='+', required=True)
+    parser.add_argument('--transmission')
     parser.add_argument('-v', action="store_true", default=False, help="Verbose logging", dest="verbose")
     args = parser.parse_args()
 
@@ -134,7 +146,7 @@ def main():
     logging.info(f'Webhook successfully installed to {args.webhook}')
     logging.info(f'Authorized ids: {args.users}')
 
-    handler = TorrentCommandHandler(args.api_token, [int(x) for x in args.users])
+    handler = TorrentCommandHandler(args.api_token, [int(x) for x in args.users], args.transmission)
 
     httpd = TelegramWebhookServer(('', args.port), handler)
     httpd.serve_forever()
