@@ -5,6 +5,7 @@ import requests
 import logging
 from urllib.parse import urlsplit
 from jinja2 import Environment
+import redis
 from transmission_rpc import Client
 from .server import TelegramWebhookServer, BotRequestHandler, PatternMessageHandler
 from .trackers import RutrackerHelper, TorrentItem
@@ -127,9 +128,10 @@ class TorrentCommandHandler(BotRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--redis', required=True, type=urlsplit)
     parser.add_argument('--api-token', required=True)
+    parser.add_argument('--secret-token-key', default='telegram_bot_secret_token')
     parser.add_argument('--port', type=int, default='8000')
-    parser.add_argument('--secret-token', required=True)
     parser.add_argument('--webhook', required=True)
     parser.add_argument('--users', nargs='+', required=True)
     parser.add_argument('--transmission')
@@ -138,10 +140,11 @@ def main():
 
     logging.basicConfig(format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
                         level=logging.DEBUG if args.verbose else logging.INFO)
+    redis_cli = redis.Redis(host=args.redis.hostname, port=args.redis.port, db=0)
 
     # initialize webhook
     res = requests.post(f'https://api.telegram.org/bot{args.api_token}/setWebHook',
-                        data={'url': args.webhook, 'secret_token': args.secret_token})
+                        data={'url': args.webhook, 'secret_token': redis_cli.get(args.secret_token_key)})
     res.raise_for_status()
     logging.info(f'Webhook successfully installed to {args.webhook}')
     logging.info(f'Authorized ids: {args.users}')

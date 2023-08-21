@@ -1,3 +1,4 @@
+redis[hiredis]
 requests
 lxml
 cssselect
